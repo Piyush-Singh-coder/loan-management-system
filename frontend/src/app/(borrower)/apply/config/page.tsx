@@ -137,6 +137,10 @@ export default function LoanConfigPage() {
                 <Button className="w-full mt-8 bg-white text-slate-900 hover:bg-slate-100 hover:shadow-xl shadow-white/10 border-0" size="lg" onClick={handleApply} isLoading={isLoading}>
                   <span className="text-base font-bold">Submit Application</span>
                 </Button>
+                
+                <Button variant="ghost" className="w-full mt-3 text-slate-300 hover:text-white hover:bg-white/10" size="lg" onClick={() => router.push('/dashboard')} disabled={isLoading}>
+                  <span className="text-sm font-bold">Cancel</span>
+                </Button>
               </div>
             </div>
           </div>

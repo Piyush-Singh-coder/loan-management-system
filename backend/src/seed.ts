@@ -22,7 +22,6 @@ const SEED_USERS: SeedUser[] = [
   { email: 'sanction@lms.com',    password: 'Sanction@123',    role: 'SANCTION' },
   { email: 'disburse@lms.com',    password: 'Disburse@123',    role: 'DISBURSEMENT' },
   { email: 'collection@lms.com',  password: 'Collect@123',     role: 'COLLECTION' },
-  { email: 'borrower@lms.com',    password: 'Borrower@123',    role: 'BORROWER' },
 ];
 
 const seed = async () => {

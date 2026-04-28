@@ -69,8 +69,8 @@ export default function UploadSlipPage() {
           </div>
 
           <div className="mt-10 flex flex-col-reverse sm:flex-row justify-between gap-4 pt-6 border-t border-slate-100">
-            <Button variant="secondary" size="lg" className="w-full sm:w-auto" onClick={() => router.back()} disabled={isLoading}>
-              ← Back
+            <Button variant="secondary" size="lg" className="w-full sm:w-auto" onClick={() => router.push('/dashboard')} disabled={isLoading}>
+              Cancel
             </Button>
             <Button size="lg" className="w-full sm:w-auto min-w-[200px]" onClick={handleUpload} isLoading={isLoading} disabled={!file}>
               Upload & Continue →
