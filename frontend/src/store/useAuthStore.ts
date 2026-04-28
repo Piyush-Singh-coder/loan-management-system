@@ -11,6 +11,7 @@ interface AuthState {
   token: string | null;
   isLoading: boolean;
   error: string | null;
+  _hasHydrated: boolean;
 
   // Actions
   login: (email: string, password: string) => Promise<User>;
@@ -20,6 +21,7 @@ interface AuthState {
   updateProfileStatus: (status: ProfileStatus) => void;
   updateUser: (user: User) => void;
   clearError: () => void;
+  setHasHydrated: (val: boolean) => void;
 }
 
 // ─── Store ───────────────────────────────────────────────────────────────────
@@ -31,6 +33,7 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       isLoading: false,
       error: null,
+      _hasHydrated: false,
 
       /**
        * POST /api/auth/login
@@ -96,10 +99,15 @@ export const useAuthStore = create<AuthState>()(
       updateUser: (user) => set({ user }),
 
       clearError: () => set({ error: null }),
+
+      setHasHydrated: (val) => set({ _hasHydrated: val }),
     }),
     {
       name: 'lms-auth-storage',
       partialize: (state: AuthState) => ({ user: state.user, token: state.token }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );
