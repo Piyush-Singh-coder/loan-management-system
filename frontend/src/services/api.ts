@@ -3,7 +3,7 @@ import { useAuthStore } from '../store/useAuthStore';
 
 // Set the base URL for the backend API
 const api = axios.create({
-  baseURL: 'http://localhost:5000/api', // Match the backend port
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api',
 });
 
 // Intercept requests to add the Authorization token
