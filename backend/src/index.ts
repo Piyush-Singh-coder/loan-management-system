@@ -4,7 +4,6 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 
-import connectDB from './config/db';
 import { errorHandler } from './middleware/errorHandler';
 
 // Routes
@@ -28,7 +27,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  res.json({ status: 'OK', database: 'DynamoDB', timestamp: new Date().toISOString() });
 });
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
@@ -48,9 +47,6 @@ app.use((_req, res) => {
 app.use(errorHandler);
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
-// Connect to Database immediately
-connectDB();
-
 const start = async () => {
   app.listen(PORT, () => {
     console.log(`🚀 LMS Backend running on http://localhost:${PORT}`);
@@ -58,8 +54,7 @@ const start = async () => {
   });
 };
 
-// Only start the standalone server if we're not in production (Vercel handles this)
-if (process.env.NODE_ENV !== 'production') {
+if (process.env.NODE_ENV !== 'production' || process.env.PM2 === 'true' || require.main === module) {
   start();
 }
 

@@ -36,9 +36,9 @@ export class CollectionController {
     });
 
     const message =
-      result.loan.status === 'CLOSED'
+      result.loan?.status === 'CLOSED'
         ? '🎉 Payment recorded. Loan is fully repaid and CLOSED.'
-        : `Payment recorded. Outstanding balance: ₹${result.loan.outstandingBalance}`;
+        : `Payment recorded. Outstanding balance: ₹${result.loan?.outstandingBalance ?? 0}`;
 
     sendSuccess(res, result, message);
   }

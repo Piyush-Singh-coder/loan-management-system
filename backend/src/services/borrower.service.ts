@@ -1,8 +1,8 @@
-import User from '../models/User';
-import Loan from '../models/Loan';
+import UserRepo from '../models/UserRepo';
+import LoanRepo from '../models/LoanRepo';
 import { checkEligibility } from '../utils/bre';
 import { calculateLoan } from '../utils/loanCalculator';
-import { EmploymentMode } from '../types';
+import { EmploymentMode, LoanStatus } from '../types';
 
 interface PersonalDetailsInput {
   fullName: string;
@@ -33,14 +33,10 @@ export class BorrowerService {
 
     const profileStatus = breResult.eligible ? 'ELIGIBLE' : 'INELIGIBLE';
 
-    const user = await User.findByIdAndUpdate(
-      userId,
-      {
-        personalDetails: { ...details, dob, pan: details.pan.toUpperCase() },
-        profileStatus,
-      },
-      { new: true, runValidators: true }
-    ).select('-password');
+    const user = await UserRepo.update(userId, {
+      personalDetails: { ...details, dob: dob.toISOString(), pan: details.pan.toUpperCase() },
+      profileStatus,
+    });
 
     if (!user) {
       const err = new Error('User not found.') as Error & { statusCode: number };
@@ -48,15 +44,15 @@ export class BorrowerService {
       throw err;
     }
 
-    return { user, breResult };
+    const { password, ...userWithoutPassword } = user;
+    return { user: userWithoutPassword, breResult };
   }
 
   /**
-   * Step 3: Save salary slip URL (already uploaded to Cloudinary via middleware).
-   * Returns current loan draft for preview or creates a temp holder.
+   * Step 3: Save salary slip URL.
    */
   static async saveSalarySlip(userId: string, slipUrl: string) {
-    const user = await User.findById(userId);
+    const user = await UserRepo.findById(userId);
     if (!user) {
       const err = new Error('User not found.') as Error & { statusCode: number };
       err.statusCode = 404;
@@ -69,8 +65,6 @@ export class BorrowerService {
       throw err;
     }
 
-    // We store the slip URL in the loan once the full application is submitted.
-    // Return it here so the frontend can display a preview.
     return { salarySlipUrl: slipUrl, message: 'Salary slip uploaded. Proceed to loan application.' };
   }
 
@@ -78,7 +72,7 @@ export class BorrowerService {
    * Step 4: Calculate loan and create PENDING loan application.
    */
   static async applyForLoan(userId: string, data: ApplyLoanInput, salarySlipUrl: string) {
-    const user = await User.findById(userId);
+    const user = await UserRepo.findById(userId);
     if (!user) {
       const err = new Error('User not found.') as Error & { statusCode: number };
       err.statusCode = 404;
@@ -92,10 +86,8 @@ export class BorrowerService {
     }
 
     // Prevent multiple active applications
-    const existingLoan = await Loan.findOne({
-      borrowerId: userId,
-      status: { $in: ['PENDING', 'APPROVED', 'DISBURSED'] },
-    });
+    const activeStatuses: LoanStatus[] = ['PENDING', 'APPROVED', 'DISBURSED'];
+    const existingLoan = await LoanRepo.findByBorrowerIdAndStatuses(userId, activeStatuses);
     if (existingLoan) {
       const err = new Error('You already have an active loan application.') as Error & { statusCode: number };
       err.statusCode = 409;
@@ -104,7 +96,7 @@ export class BorrowerService {
 
     const calc = calculateLoan(data.amount, data.tenure);
 
-    const loan = await Loan.create({
+    const loan = await LoanRepo.create({
       borrowerId: userId,
       amount: calc.principal,
       tenure: calc.tenure,
@@ -117,7 +109,7 @@ export class BorrowerService {
     });
 
     // Update borrower profile status
-    await User.findByIdAndUpdate(userId, { profileStatus: 'APPLIED' });
+    await UserRepo.update(userId, { profileStatus: 'APPLIED' });
 
     return loan;
   }
@@ -126,6 +118,6 @@ export class BorrowerService {
    * Get all loans for a specific borrower.
    */
   static async getMyLoans(userId: string) {
-    return Loan.find({ borrowerId: userId }).sort({ createdAt: -1 });
+    return LoanRepo.findByBorrowerId(userId);
   }
 }

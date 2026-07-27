@@ -6,8 +6,7 @@
  */
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
-import connectDB from './config/db';
-import User from './models/User';
+import UserRepo from './models/UserRepo';
 import { UserRole } from './types';
 
 interface SeedUser {
@@ -25,18 +24,17 @@ const SEED_USERS: SeedUser[] = [
 ];
 
 const seed = async () => {
-  await connectDB();
-  console.log('\n🌱 Starting seed...\n');
+  console.log('\n🌱 Starting seed for DynamoDB...\n');
 
   for (const seedUser of SEED_USERS) {
-    const exists = await User.findOne({ email: seedUser.email });
+    const exists = await UserRepo.findByEmail(seedUser.email);
     if (exists) {
       console.log(`⏭  Skipped  → ${seedUser.email} (already exists)`);
       continue;
     }
 
     const hashedPassword = await bcrypt.hash(seedUser.password, 12);
-    await User.create({
+    await UserRepo.create({
       email: seedUser.email,
       password: hashedPassword,
       role: seedUser.role,

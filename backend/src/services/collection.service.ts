@@ -1,5 +1,6 @@
-import Loan from '../models/Loan';
-import Payment from '../models/Payment';
+import LoanRepo from '../models/LoanRepo';
+import PaymentRepo from '../models/PaymentRepo';
+import { LoanStatus } from '../types';
 
 interface RecordPaymentInput {
   loanId: string;
@@ -14,16 +15,14 @@ export class CollectionService {
    * Get all DISBURSED (active) loans for collection follow-up.
    */
   static async getActiveLoans() {
-    return Loan.find({ status: 'DISBURSED' })
-      .populate('borrowerId', '-password')
-      .sort({ createdAt: 1 });
+    return LoanRepo.findByStatusWithBorrower('DISBURSED');
   }
 
   /**
    * Get payment history for a specific loan.
    */
   static async getPaymentHistory(loanId: string) {
-    return Payment.find({ loanId }).sort({ paymentDate: -1 });
+    return PaymentRepo.findByLoanId(loanId);
   }
 
   /**
@@ -31,7 +30,7 @@ export class CollectionService {
    * Automatically closes the loan if outstanding balance reaches 0.
    */
   static async recordPayment(input: RecordPaymentInput) {
-    const loan = await Loan.findById(input.loanId);
+    const loan = await LoanRepo.findById(input.loanId);
     if (!loan) {
       const err = new Error('Loan not found.') as Error & { statusCode: number };
       err.statusCode = 404;
@@ -49,25 +48,29 @@ export class CollectionService {
     }
 
     // Record the payment
-    const payment = await Payment.create({
+    const payment = await PaymentRepo.create({
       loanId: input.loanId,
       utrNumber: input.utrNumber,
       amount: input.amount,
-      paymentDate: new Date(input.paymentDate),
+      paymentDate: input.paymentDate,
       recordedBy: input.recordedBy,
     });
 
     // Deduct from outstanding balance
-    loan.outstandingBalance = Math.max(0,Math.round((loan.outstandingBalance - input.amount) * 100) / 100);
+    let newBalance = Math.max(0, Math.round((loan.outstandingBalance - input.amount) * 100) / 100);
+    let newStatus: LoanStatus = loan.status;
 
     // Auto-close loan when fully repaid
-    if (loan.outstandingBalance <= 0) {
-      loan.outstandingBalance = 0;
-      loan.status = 'CLOSED';
+    if (newBalance <= 0) {
+      newBalance = 0;
+      newStatus = 'CLOSED';
     }
 
-    await loan.save();
+    const updatedLoan = await LoanRepo.update(loan.id, {
+      outstandingBalance: newBalance,
+      status: newStatus,
+    });
 
-    return { payment, loan };
+    return { payment, loan: updatedLoan };
   }
 }

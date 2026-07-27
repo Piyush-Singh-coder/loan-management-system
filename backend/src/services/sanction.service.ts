@@ -1,20 +1,19 @@
-import Loan from '../models/Loan';
+import LoanRepo from '../models/LoanRepo';
+import UserRepo from '../models/UserRepo';
 
 export class SanctionService {
   /**
    * Get all PENDING loan applications for review.
    */
   static async getPendingLoans() {
-    return Loan.find({ status: 'PENDING' })
-      .populate('borrowerId', '-password')
-      .sort({ createdAt: 1 }); // oldest first
+    return LoanRepo.findByStatusWithBorrower('PENDING');
   }
 
   /**
    * Approve a PENDING loan.
    */
   static async approveLoan(loanId: string) {
-    const loan = await Loan.findById(loanId);
+    const loan = await LoanRepo.findById(loanId);
     if (!loan) {
       const err = new Error('Loan not found.') as Error & { statusCode: number };
       err.statusCode = 404;
@@ -25,17 +24,18 @@ export class SanctionService {
       err.statusCode = 400;
       throw err;
     }
-    loan.status = 'APPROVED';
-    loan.rejectionReason = undefined;
-  await loan.save();
-    return loan;
+    const updatedLoan = await LoanRepo.update(loanId, {
+      status: 'APPROVED',
+      rejectionReason: null,
+    });
+    return updatedLoan;
   }
 
   /**
    * Reject a PENDING loan with a mandatory reason.
    */
   static async rejectLoan(loanId: string, reason: string) {
-    const loan = await Loan.findById(loanId);
+    const loan = await LoanRepo.findById(loanId);
     if (!loan) {
       const err = new Error('Loan not found.') as Error & { statusCode: number };
       err.statusCode = 404;
@@ -46,14 +46,17 @@ export class SanctionService {
       err.statusCode = 400;
       throw err;
     }
-    loan.status = 'REJECTED';
-    loan.rejectionReason = reason;
-    await loan.save();
+    const updatedLoan = await LoanRepo.update(loanId, {
+      status: 'REJECTED',
+      rejectionReason: reason,
+    });
 
     // Reset borrower profile so they can re-apply
-    const { default: User } = await import('../models/User');
-    await User.findByIdAndUpdate(loan.borrowerId, { profileStatus: 'ELIGIBLE' });
+    const borrowerIdStr = typeof loan.borrowerId === 'string' ? loan.borrowerId : loan.borrowerId?._id;
+    if (borrowerIdStr) {
+      await UserRepo.update(borrowerIdStr, { profileStatus: 'ELIGIBLE' });
+    }
 
-    return loan;
+    return updatedLoan;
   }
 }

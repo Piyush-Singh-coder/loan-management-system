@@ -1,20 +1,18 @@
-import Loan from '../models/Loan';
+import LoanRepo from '../models/LoanRepo';
 
 export class DisbursementService {
   /**
    * Get all APPROVED loans awaiting disbursement.
    */
   static async getApprovedLoans() {
-    return Loan.find({ status: 'APPROVED' })
-      .populate('borrowerId', '-password')
-      .sort({ updatedAt: 1 });
+    return LoanRepo.findByStatusWithBorrower('APPROVED');
   }
 
   /**
    * Mark an APPROVED loan as DISBURSED.
    */
   static async disburseLoan(loanId: string) {
-    const loan = await Loan.findById(loanId);
+    const loan = await LoanRepo.findById(loanId);
     if (!loan) {
       const err = new Error('Loan not found.') as Error & { statusCode: number };
       err.statusCode = 404;
@@ -25,8 +23,7 @@ export class DisbursementService {
       err.statusCode = 400;
       throw err;
     }
-    loan.status = 'DISBURSED';
-    await loan.save();
-    return loan;
+    const updatedLoan = await LoanRepo.update(loanId, { status: 'DISBURSED' });
+    return updatedLoan;
   }
 }

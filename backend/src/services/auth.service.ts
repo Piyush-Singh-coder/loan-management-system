@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
-import User from '../models/User';
+import UserRepo from '../models/UserRepo';
 import { UserRole } from '../types';
 
 interface RegisterInput {
@@ -35,7 +35,7 @@ export class AuthService {
    * Only borrowers self-register; other roles are seeded by Admin.
    */
   static async register(input: RegisterInput): Promise<AuthTokenPayload> {
-    const existing = await User.findOne({ email: input.email.toLowerCase() });
+    const existing = await UserRepo.findByEmail(input.email);
     if (existing) {
       const err = new Error('An account with this email already exists.') as Error & { statusCode: number };
       err.statusCode = 409;
@@ -43,15 +43,15 @@ export class AuthService {
     }
 
     const hashedPassword = await bcrypt.hash(input.password, 12);
-    const user = await User.create({
-      email: input.email.toLowerCase(),
+    const user = await UserRepo.create({
+      email: input.email,
       password: hashedPassword,
       role: 'BORROWER',
       profileStatus: 'REGISTERED',
     });
 
-    const token = generateToken(user._id.toString(), user.role, user.email);
-    const userObj = user.toObject() as unknown as Record<string, unknown>;
+    const token = generateToken(user._id, user.role, user.email);
+    const userObj = { ...user } as Record<string, unknown>;
     delete userObj.password;
 
     return { user: userObj, token };
@@ -61,8 +61,8 @@ export class AuthService {
    * Login for all roles (Borrower, Admin, Sales, etc.)
    */
   static async login(input: LoginInput): Promise<AuthTokenPayload> {
-    const user = await User.findOne({ email: input.email.toLowerCase() });
-    if (!user) {
+    const user = await UserRepo.findByEmail(input.email);
+    if (!user || !user.password) {
       const err = new Error('Invalid email or password.') as Error & { statusCode: number };
       err.statusCode = 401;
       throw err;
@@ -75,8 +75,8 @@ export class AuthService {
       throw err;
     }
 
-    const token = generateToken(user._id.toString(), user.role, user.email);
-    const userObj = user.toObject() as unknown as Record<string, unknown>;
+    const token = generateToken(user._id, user.role, user.email);
+    const userObj = { ...user } as Record<string, unknown>;
     delete userObj.password;
 
     return { user: userObj, token };
@@ -86,12 +86,14 @@ export class AuthService {
    * Get user profile by ID.
    */
   static async getProfile(userId: string) {
-    const user = await User.findById(userId).select('-password');
+    const user = await UserRepo.findById(userId);
     if (!user) {
       const err = new Error('User not found.') as Error & { statusCode: number };
       err.statusCode = 404;
       throw err;
     }
-    return user;
+    const userObj = { ...user } as Record<string, unknown>;
+    delete userObj.password;
+    return userObj;
   }
 }
