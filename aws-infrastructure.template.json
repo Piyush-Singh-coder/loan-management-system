@@ -1,0 +1,193 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "AWS CloudFormation Template for Loan Management System (LMS) - Region-Independent EC2 + DynamoDB Tables + Nginx + PM2",
+  "Parameters": {
+    "KeyName": {
+      "Description": "Name of an existing EC2 KeyPair to enable SSH access to the instance (Optional if using AWS Systems Manager / EC2 Instance Connect)",
+      "Type": "String",
+      "Default": ""
+    },
+    "GithubRepoUrl": {
+      "Description": "URL of your GitHub repository containing the LMS project code",
+      "Type": "String",
+      "Default": "https://github.com/Piyush-Singh-coder/loan-management-system.git"
+    },
+    "JwtSecret": {
+      "Description": "Secret key used for signing JWT tokens",
+      "Type": "String",
+      "NoEcho": true,
+      "Default": "super_secret_jwt_key_lms_2026_production"
+    },
+    "LatestAmiId": {
+      "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+      "Default": "/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id"
+    }
+  },
+  "Conditions": {
+    "HasKeyName": {
+      "Fn::Not": [{ "Fn::Equals": [{ "Ref": "KeyName" }, ""] }]
+    }
+  },
+  "Resources": {
+    "LMSUsersTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "TableName": "LMS_Users",
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          { "AttributeName": "id", "AttributeType": "S" },
+          { "AttributeName": "email", "AttributeType": "S" }
+        ],
+        "KeySchema": [
+          { "AttributeName": "id", "KeyType": "HASH" }
+        ],
+        "GlobalSecondaryIndexes": [
+          {
+            "IndexName": "EmailIndex",
+            "KeySchema": [
+              { "AttributeName": "email", "KeyType": "HASH" }
+            ],
+            "Projection": { "ProjectionType": "ALL" }
+          }
+        ]
+      }
+    },
+    "LMSLoansTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "TableName": "LMS_Loans",
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          { "AttributeName": "id", "AttributeType": "S" },
+          { "AttributeName": "borrowerId", "AttributeType": "S" },
+          { "AttributeName": "status", "AttributeType": "S" },
+          { "AttributeName": "createdAt", "AttributeType": "S" }
+        ],
+        "KeySchema": [
+          { "AttributeName": "id", "KeyType": "HASH" }
+        ],
+        "GlobalSecondaryIndexes": [
+          {
+            "IndexName": "BorrowerIndex",
+            "KeySchema": [
+              { "AttributeName": "borrowerId", "KeyType": "HASH" }
+            ],
+            "Projection": { "ProjectionType": "ALL" }
+          },
+          {
+            "IndexName": "StatusIndex",
+            "KeySchema": [
+              { "AttributeName": "status", "KeyType": "HASH" },
+              { "AttributeName": "createdAt", "KeyType": "RANGE" }
+            ],
+            "Projection": { "ProjectionType": "ALL" }
+          }
+        ]
+      }
+    },
+    "LMSPaymentsTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "TableName": "LMS_Payments",
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          { "AttributeName": "id", "AttributeType": "S" },
+          { "AttributeName": "loanId", "AttributeType": "S" },
+          { "AttributeName": "paymentDate", "AttributeType": "S" },
+          { "AttributeName": "utrNumber", "AttributeType": "S" }
+        ],
+        "KeySchema": [
+          { "AttributeName": "id", "KeyType": "HASH" }
+        ],
+        "GlobalSecondaryIndexes": [
+          {
+            "IndexName": "LoanIndex",
+            "KeySchema": [
+              { "AttributeName": "loanId", "KeyType": "HASH" },
+              { "AttributeName": "paymentDate", "KeyType": "RANGE" }
+            ],
+            "Projection": { "ProjectionType": "ALL" }
+          },
+          {
+            "IndexName": "UtrIndex",
+            "KeySchema": [
+              { "AttributeName": "utrNumber", "KeyType": "HASH" }
+            ],
+            "Projection": { "ProjectionType": "ALL" }
+          }
+        ]
+      }
+    },
+    "LMSIAMRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "RoleName": "LMS-EC2-DynamoDB-Role",
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": ["ec2.amazonaws.com"]
+              },
+              "Action": ["sts:AssumeRole"]
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
+        ]
+      }
+    },
+    "LMSInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "InstanceProfileName": "LMS-EC2-DynamoDB-InstanceProfile",
+        "Roles": [{ "Ref": "LMSIAMRole" }]
+      }
+    },
+    "LMSSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Enable HTTP, HTTPS and SSH access for LMS Server",
+        "SecurityGroupIngress": [
+          { "IpProtocol": "tcp", "FromPort": 22, "ToPort": 22, "CidrIp": "0.0.0.0/0" },
+          { "IpProtocol": "tcp", "FromPort": 80, "ToPort": 80, "CidrIp": "0.0.0.0/0" },
+          { "IpProtocol": "tcp", "FromPort": 443, "ToPort": 443, "CidrIp": "0.0.0.0/0" }
+        ]
+      }
+    },
+    "LMSEC2Instance": {
+      "Type": "AWS::EC2::Instance",
+      "DependsOn": ["LMSUsersTable", "LMSLoansTable", "LMSPaymentsTable"],
+      "Properties": {
+        "InstanceType": "t3.small",
+        "ImageId": { "Ref": "LatestAmiId" },
+        "KeyName": {
+          "Fn::If": ["HasKeyName", { "Ref": "KeyName" }, { "Ref": "AWS::NoValue" }]
+        },
+        "IamInstanceProfile": { "Ref": "LMSInstanceProfile" },
+        "SecurityGroups": [{ "Ref": "LMSSecurityGroup" }],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Sub": "#!/bin/bash\nset -e\nexec > /var/log/user-data.log 2>&1\n\necho '🚀 Deploying LMS...'\nsudo apt-get update -y\nsudo apt-get install -y curl git nginx\n\ncurl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -\nsudo apt-get install -y nodejs\nsudo npm install -g pm2\n\ncd /home/ubuntu\ngit clone ${GithubRepoUrl} loan-management-system || echo 'Repo clone done.'\ncd loan-management-system\n\nPUBLIC_IP=$(curl -s http://checkip.amazonaws.com)\n\ncat << 'EOF' > backend/.env\nPORT=5000\nNODE_ENV=production\nJWT_SECRET=${JwtSecret}\nAWS_REGION=${AWS::Region}\nUSERS_TABLE=LMS_Users\nLOANS_TABLE=LMS_Loans\nPAYMENTS_TABLE=LMS_Payments\nEOF\n\ncat << EOF > frontend/.env.local\nNEXT_PUBLIC_API_URL=http://$PUBLIC_IP/api\nEOF\n\ncd backend\nnpm install\nnpm run build\nnpm run seed || true\ncd ..\n\ncd frontend\nnpm install\nnpm run build\ncd ..\n\nsudo cp nginx.conf /etc/nginx/sites-available/lms\nsudo ln -sf /etc/nginx/sites-available/lms /etc/nginx/sites-enabled/default\nsudo nginx -t\nsudo systemctl restart nginx\n\npm2 startOrReload ecosystem.config.js\npm2 save\nsudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u ubuntu --hp /home/ubuntu || true\n\necho '✨ Deployment completed!'\n"
+          }
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "EC2PublicIP": {
+      "Description": "Public IP address of LMS EC2 Instance",
+      "Value": { "Fn::GetAtt": ["LMSEC2Instance", "PublicIp"] }
+    },
+    "WebsiteURL": {
+      "Description": "URL to access the LMS Web Application",
+      "Value": { "Fn::Sub": "http://${LMSEC2Instance.PublicIp}" }
+    },
+    "BackendHealthCheck": {
+      "Description": "URL to check Express backend health",
+      "Value": { "Fn::Sub": "http://${LMSEC2Instance.PublicIp}/api/health" }
+    }
+  }
+}

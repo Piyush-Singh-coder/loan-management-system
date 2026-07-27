@@ -41,8 +41,11 @@ export class BorrowerController {
       return;
     }
 
-    // multer-storage-cloudinary attaches the Cloudinary URL to req.file.path
-    const slipUrl = (req.file as Express.Multer.File & { path: string }).path;
+    let slipUrl = (req.file as Express.Multer.File & { path?: string }).path || '';
+    if (!slipUrl.startsWith('http://') && !slipUrl.startsWith('https://')) {
+      slipUrl = `/uploads/${req.file.filename}`;
+    }
+
     const result = await BorrowerService.saveSalarySlip(req.user!.userId, slipUrl);
     sendSuccess(res, result, 'Salary slip uploaded successfully.');
   }
